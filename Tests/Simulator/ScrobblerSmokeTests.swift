@@ -11,9 +11,11 @@ final class ScrobblerSmokeTests: XCTestCase {
         XCTAssertTrue(startListening.waitForExistence(timeout: 10))
 
         XCUIDevice.shared.press(.home)
-        let home = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        XCTAssertTrue(home.wait(for: .runningForeground, timeout: 10))
-        XCTAssertNotEqual(app.state, .runningForeground)
+        XCTAssertTrue(
+            app.wait(for: .runningBackground, timeout: 20) ||
+                app.wait(for: .runningBackgroundSuspended, timeout: 2),
+            "Scrobbler should enter the background after pressing Home"
+        )
 
         app.activate()
         XCTAssertTrue(startListening.waitForExistence(timeout: 10))

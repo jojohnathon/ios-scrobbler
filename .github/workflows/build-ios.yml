@@ -23,6 +23,18 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
           rustup --version
 
+      - name: Start iPhone Simulator
+        continue-on-error: true
+        run: |
+          device=$(xcrun simctl list devices available --json | jq -er '
+            .devices["com.apple.CoreSimulator.SimRuntime.iOS-27-0"][]
+            | select(.name == "iPhone 17") | [.udid, .state] | @tsv')
+          read -r udid state <<< "$device"
+          if [ "$state" = Shutdown ]; then
+            xcrun simctl boot "$udid"
+          fi
+          echo "SIMULATOR_UDID=$udid" >> "$GITHUB_ENV"
+
       - name: Install XcodeGen
         env:
           HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -69,9 +81,9 @@ jobs:
 
       - name: Run iPhone Simulator smoke test
         run: |
-          xcrun simctl list devices available
+          : "${SIMULATOR_UDID:?The iPhone Simulator could not be started}"
           xcodebuild -project Scrobbler.xcodeproj -scheme Scrobbler \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' \
+            -destination "id=$SIMULATOR_UDID" \
             -derivedDataPath build/DerivedData \
             -parallel-testing-enabled NO \
             -resultBundlePath build/Scrobbler-Simulator.xcresult \
