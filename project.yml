@@ -1,0 +1,32 @@
+name: Scrobbler
+options:
+  deploymentTarget:
+    iOS: '27.0'
+targets:
+  Scrobbler:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+        optional: true
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nz.johnathon.scrobbler
+        INFOPLIST_FILE: Config/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Config/Capture.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: '0.1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1'
+    dependencies:
+      - framework: Frameworks/Fingerprint.xcframework
+        embed: false
+      - sdk: libsqlite3.tbd
+schemes:
+  Scrobbler:
+    build:
+      targets:
+        Scrobbler: all

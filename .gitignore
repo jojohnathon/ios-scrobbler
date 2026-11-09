@@ -1,0 +1,5 @@
+/build/
+/Frameworks/
+/Scrobbler.xcodeproj/
+**/target/
+.DS_Store

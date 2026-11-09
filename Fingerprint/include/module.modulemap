@@ -1,0 +1,4 @@
+module Fingerprint {
+    header "Fingerprint.h"
+    export *
+}

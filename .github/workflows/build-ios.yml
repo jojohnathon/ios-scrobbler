@@ -1,0 +1,68 @@
+name: Build iPhone IPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustup --version
+
+      - name: Install XcodeGen
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          if ! command -v xcodegen >/dev/null; then
+            brew install xcodegen
+          fi
+
+      - name: Build fingerprint library
+        run: |
+          cargo test --locked --manifest-path Fingerprint/Cargo.toml
+          bash scripts/build-fingerprint.sh
+
+      - name: Check play tracking
+        run: |
+          mkdir -p build
+          swiftc Sources/Listening.swift Tests/PlayTrackerChecks.swift -o build/play-tracker-checks
+          build/play-tracker-checks
+
+      - name: Build unsigned iPhone app
+        run: |
+          xcodegen generate
+          xcodebuild -project Scrobbler.xcodeproj -scheme Scrobbler \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
+
+      - name: Package unsigned IPA
+        run: |
+          app=build/DerivedData/Build/Products/Release-iphoneos/Scrobbler.app
+          ipa=build/Scrobbler-unsigned.ipa
+          xcrun lipo -verify_arch arm64 "$app/Scrobbler"
+          test "$(plutil -extract UIBackgroundModes.0 raw "$app/Info.plist")" = screen-capture
+          mkdir -p build/ipa/Payload
+          ditto "$app" build/ipa/Payload/Scrobbler.app
+          ditto -c -k --norsrc --keepParent build/ipa/Payload "$ipa"
+          unzip -tq "$ipa"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Scrobbler-unsigned
+          path: build/Scrobbler-unsigned.ipa
+          if-no-files-found: error
+          compression-level: 0
