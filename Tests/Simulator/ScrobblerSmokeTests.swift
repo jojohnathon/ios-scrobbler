@@ -19,9 +19,8 @@ final class ScrobblerSmokeTests: XCTestCase {
         XCTAssertTrue(startListening.waitForExistence(timeout: 10))
 
         startListening.tap()
-        let unavailable = app.staticTexts["The system capture picker is unavailable"]
-        let pickerUnavailable = unavailable.waitForExistence(timeout: 5)
-        print("Simulator capture picker unavailable message shown: \(pickerUnavailable)")
+        let deviceRequired = app.staticTexts["Screen capture requires a physical iPhone"]
+        XCTAssertTrue(deviceRequired.waitForExistence(timeout: 5))
 
         let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         screenshot.name = "After tapping Start listening"

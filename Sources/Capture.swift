@@ -1,8 +1,10 @@
-import AVFoundation
 import Combine
-import CoreMedia
 import Foundation
+#if !targetEnvironment(simulator)
+import AVFoundation
+import CoreMedia
 @preconcurrency import ScreenCaptureKit
+#endif
 
 struct AudioWindow: Sendable {
     static let sampleRate = 16_000
@@ -53,6 +55,14 @@ final class CaptureController: ObservableObject {
         }
     }
 
+    #if targetEnvironment(simulator)
+    func start() {
+        state = .failed("Screen capture requires a physical iPhone")
+    }
+
+    func stop() {}
+    func checkStreamAfterForeground() {}
+    #else
     private var session: UUID?
     private var attempt: UUID?
     private var observer: PickerObserver?
@@ -232,8 +242,10 @@ final class CaptureController: ObservableObject {
         isReceivingAudio = false
         state = nextState
     }
+    #endif
 }
 
+#if !targetEnvironment(simulator)
 // The picker gives us a new filter. Only the main actor accesses it after this handoff.
 private struct PickerSelection: @unchecked Sendable {
     let filter: SCContentFilter
@@ -462,3 +474,4 @@ private final class ConverterInput: @unchecked Sendable {
         return buffer
     }
 }
+#endif
