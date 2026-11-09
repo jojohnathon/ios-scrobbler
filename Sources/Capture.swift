@@ -29,11 +29,13 @@ final class CaptureController: ObservableObject {
     @Published private(set) var state: State = .idle
     @Published private(set) var level = 0.0
     @Published private(set) var windowCount = 0
+    @Published private(set) var lastAudioAt: Date?
+    @Published private(set) var lastInterruption: String?
+    @Published private var isReceivingAudio = false
 
     var onWindow: ((AudioWindow) -> Void)?
     var onGap: (() -> Void)?
 
-    var isCapturing: Bool { state == .listening }
     var canStart: Bool {
         switch state {
         case .idle, .failed: true
@@ -45,7 +47,7 @@ final class CaptureController: ObservableObject {
         case .idle: "Ready to listen"
         case .picking: "Choose full-display capture in the system picker"
         case .starting: "Starting audio capture"
-        case .listening: "Listening to device audio"
+        case .listening: isReceivingAudio ? "Listening to device audio" : "Waiting for device audio"
         case .stopping: "Stopping capture"
         case .failed(let message): message
         }
@@ -70,6 +72,8 @@ final class CaptureController: ObservableObject {
         self.session = session
         windowCount = 0
         level = 0
+        lastAudioAt = nil
+        lastInterruption = nil
         state = .picking
 
         let observer = PickerObserver { [weak self] event in
@@ -83,6 +87,13 @@ final class CaptureController: ObservableObject {
         picker.add(observer)
         picker.isActive = true
         picker.present()
+    }
+
+    func checkStreamAfterForeground() {
+        guard state == .listening, let session, let stream, !stream.isCapturing else { return }
+        onGap?()
+        lastInterruption = "iOS reports that capture ended while the app was away. Start listening again to reconnect."
+        finish(session, as: .idle)
     }
 
     func stop() {
@@ -186,16 +197,25 @@ final class CaptureController: ObservableObject {
     private func handleAudio(_ event: CaptureEvent, session: UUID, attempt: UUID) {
         guard self.session == session, self.attempt == attempt, state == .listening else { return }
         switch event {
-        case .level(let level):
+        case .level(let level, let receivedAt):
             self.level = level
+            if !isReceivingAudio { isReceivingAudio = true }
+            if receivedAt.timeIntervalSince(lastAudioAt ?? .distantPast) >= 1 {
+                lastAudioAt = receivedAt
+            }
         case .window(let window):
             windowCount += 1
             onWindow?(window)
         case .gap:
             level = 0
             onGap?()
-        case .stopped(let message):
+        case .noAudioBuffers:
+            level = 0
+            isReceivingAudio = false
+            lastInterruption = "The capture stream stopped delivering audio buffers."
+        case .stopped(let message, let detail):
             onGap?()
+            lastInterruption = detail
             finish(session, as: message.map(State.failed) ?? .idle)
         }
     }
@@ -209,6 +229,7 @@ final class CaptureController: ObservableObject {
         receiver = nil
         operation = nil
         level = 0
+        isReceivingAudio = false
         state = nextState
     }
 }
@@ -256,10 +277,11 @@ private func captureAuthorizationMessage(_ error: any Error) -> String? {
 }
 
 private enum CaptureEvent: Sendable {
-    case level(Double)
+    case level(Double, Date)
     case gap
+    case noAudioBuffers
     case window(AudioWindow)
-    case stopped(String?)
+    case stopped(message: String?, detail: String)
 }
 
 private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
@@ -283,6 +305,7 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
     private var hasSignal = false
     private var windowStart: Date?
     private var pending: [Int16] = []
+    private var reportedMissingBuffers = false
 
     init(receive: @escaping @Sendable (CaptureEvent) -> Void) {
         self.receive = receive
@@ -291,9 +314,11 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
         let watchdog = DispatchSource.makeTimerSource(queue: queue)
         watchdog.schedule(deadline: .now() + .seconds(1), repeating: .milliseconds(500), leeway: .milliseconds(100))
         watchdog.setEventHandler { [weak self] in
-            guard let self, let lastBufferUptime,
+            guard let self, !reportedMissingBuffers, let lastBufferUptime,
                   ProcessInfo.processInfo.systemUptime - lastBufferUptime > 1.25 else { return }
+            reportedMissingBuffers = true
             resetAfterGap()
+            receive(.noAudioBuffers)
         }
         self.watchdog = watchdog
         watchdog.resume()
@@ -303,7 +328,9 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
 
     func stream(_ stream: SCStream, didStopWithError error: any Error) {
         let didUserStop = (error as? SCStreamError)?.code == .userStopped
-        receive(.stopped(didUserStop ? nil : captureAuthorizationMessage(error) ?? error.localizedDescription))
+        let message = captureAuthorizationMessage(error) ?? error.localizedDescription
+        let errorInfo = error as NSError
+        receive(.stopped(message: didUserStop ? nil : message, detail: "\(message) (\(errorInfo.domain) \(errorInfo.code))"))
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -335,6 +362,7 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
         }
         previousEnd = presentation.isFinite ? presentation + duration : nil
         lastBufferUptime = ProcessInfo.processInfo.systemUptime
+        reportedMissingBuffers = false
         if converter == nil {
             converter = AVAudioConverter(from: format, to: outputFormat)
             converter?.primeMethod = .none
@@ -372,7 +400,7 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
         let rms = sqrt(sumOfSquares / Double(samples.count))
         let now = ProcessInfo.processInfo.systemUptime
         if now - lastMeterUptime >= 0.1 {
-            receive(.level(rms))
+            receive(.level(rms, Date()))
             lastMeterUptime = now
         }
         if rms < 0.0018 {
@@ -410,7 +438,6 @@ private final class CaptureAudioReceiver: NSObject, SCStreamOutput, SCStreamDele
         windowStart = nil
         previousEnd = nil
         nextOutputDate = nil
-        lastBufferUptime = nil
         silentDuration = 0
         converter?.reset()
         if wasReceiving { receive(.gap) }

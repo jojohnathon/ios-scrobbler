@@ -17,6 +17,12 @@ struct ScrobblerView: View {
                     Text(capture.status)
                     ProgressView(value: capture.level) { Text("Device audio level") }
                     LabeledContent("Audio windows", value: capture.windowCount.formatted())
+                    if let receivedAt = capture.lastAudioAt {
+                        LabeledContent("Last audio buffer", value: receivedAt.formatted(date: .omitted, time: .standard))
+                    }
+                    if let interruption = capture.lastInterruption {
+                        Text(interruption).font(.caption).foregroundStyle(.secondary)
+                    }
 
                     if capture.canStart {
                         Button("Start listening", systemImage: "waveform") { session.start() }
@@ -79,6 +85,10 @@ struct ScrobblerView: View {
             }
             .task(id: scenePhase) {
                 guard scenePhase == .active else { return }
+                // Let pending stream callbacks run before checking whether capture ended.
+                do { try await Task.sleep(for: .seconds(1)) }
+                catch { return }
+                capture.checkStreamAfterForeground()
                 while !Task.isCancelled {
                     await session.retryScrobbles()
                     do { try await Task.sleep(for: .seconds(30)) }
