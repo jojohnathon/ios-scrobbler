@@ -66,3 +66,20 @@ jobs:
           path: build/Scrobbler-unsigned.ipa
           if-no-files-found: error
           compression-level: 0
+
+      - name: Run iPhone Simulator smoke test
+        run: |
+          xcrun simctl list devices available
+          xcodebuild -project Scrobbler.xcodeproj -scheme Scrobbler \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=27.0' \
+            -derivedDataPath build/DerivedData \
+            -parallel-testing-enabled NO \
+            -resultBundlePath build/Scrobbler-Simulator.xcresult \
+            CODE_SIGNING_ALLOWED=NO test
+
+      - uses: actions/upload-artifact@v6
+        if: ${{ !cancelled() }}
+        with:
+          name: Scrobbler-Simulator-results
+          path: build/Scrobbler-Simulator.xcresult
+          if-no-files-found: ignore

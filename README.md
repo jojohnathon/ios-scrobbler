@@ -35,3 +35,5 @@ Two consecutive matches confirm a play. Tracks longer than 30 seconds qualify af
 ## Checks
 
 Run `cargo test --locked --manifest-path Fingerprint/Cargo.toml` for native fingerprint checks. The workflow also compiles and runs `Tests/PlayTrackerChecks.swift` to check repeat windows, qualification, track changes, and gaps. See [Fingerprint/UPSTREAM.md](Fingerprint/UPSTREAM.md) for the pinned fingerprint implementation and license details.
+
+The same workflow runs a UI smoke test on the iPhone 17 simulator with iOS 27.0. It launches Scrobbler, goes to the Home Screen, returns to the app, and records what the simulator shows after tapping **Start listening**. The `Scrobbler-Simulator-results` artifact contains the XCTest results and screenshot. Use the device test above to check audio capture while another app is playing and verify the installed app's signing profile.

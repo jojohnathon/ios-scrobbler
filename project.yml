@@ -25,8 +25,24 @@ targets:
       - framework: Frameworks/Fingerprint.xcframework
         embed: false
       - sdk: libsqlite3.tbd
+  ScrobblerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests/Simulator]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: nz.johnathon.scrobbler.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: '5.0'
+        TARGETED_DEVICE_FAMILY: '1'
+        TEST_TARGET_NAME: Scrobbler
+    dependencies:
+      - target: Scrobbler
 schemes:
   Scrobbler:
     build:
       targets:
         Scrobbler: all
+    test:
+      targets:
+        - ScrobblerUITests
