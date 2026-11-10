@@ -2,7 +2,7 @@ import XCTest
 
 final class ScrobblerSmokeTests: XCTestCase {
     @MainActor
-    func testLaunchAndReturnFromHome() {
+    func testLaunchAndReturnFromSettings() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
@@ -10,11 +10,13 @@ final class ScrobblerSmokeTests: XCTestCase {
         let startListening = app.buttons["Start listening"]
         XCTAssertTrue(startListening.waitForExistence(timeout: 10))
 
-        XCUIDevice.shared.press(.home)
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        settings.activate()
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 15))
         XCTAssertTrue(
             app.wait(for: .runningBackground, timeout: 20) ||
                 app.wait(for: .runningBackgroundSuspended, timeout: 2),
-            "Scrobbler should enter the background after pressing Home"
+            "Scrobbler should enter the background when Settings is in front"
         )
 
         app.activate()
